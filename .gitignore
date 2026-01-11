@@ -3,3 +3,4 @@ venv/
 __pycache__/
 *.pyc
 gld_monitor_state.json
+gld_monitor.log

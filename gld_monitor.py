@@ -30,6 +30,14 @@ EMAIL_CONFIG = {
 
 # State file to track alerts
 STATE_FILE = "gld_monitor_state.json"
+LOG_FILE = "gld_monitor.log"
+
+
+def log(message: str):
+    """Append timestamped message to log file."""
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    with open(LOG_FILE, "a") as f:
+        f.write(f"[{timestamp}] {message}\n")
 
 
 def get_gld_data(ticker: str, days: int) -> dict:
@@ -109,7 +117,6 @@ def save_state(state: dict):
 
 
 def should_send_alert(data: dict, state: dict) -> bool:
-    return False
     """Determine if we should send an alert (avoid spam)."""
     # Only alert if drop exceeds threshold
     if data["drop_percent"] < DROP_THRESHOLD * 100:
@@ -124,13 +131,18 @@ def should_send_alert(data: dict, state: dict) -> bool:
 
 
 def main():
+    log("=== GLD Monitor Run Started ===")
     print(f"Fetching {TICKER} data...")
 
     try:
         data = get_gld_data(TICKER, LOOKBACK_DAYS)
     except Exception as e:
+        log(f"ERROR: Failed to fetch data - {e}")
         print(f"Error fetching data: {e}")
         return
+
+    summary = f"Price=${data['current_price']} | High=${data['recent_high']} ({data['high_date']}) | Drop={data['drop_percent']}%"
+    log(summary)
 
     print(f"\n{TICKER} Price Summary:")
     print(f"  Current Price: ${data['current_price']}")
@@ -143,10 +155,14 @@ def main():
     if should_send_alert(data, state):
         print(f"\nPrice has dropped {data['drop_percent']}% - sending alert!")
         if send_email_alert(data, EMAIL_CONFIG):
+            log(f"ALERT SENT: Drop {data['drop_percent']}% exceeded threshold")
             state["last_alert_high"] = data["recent_high"]
             state["last_alert_time"] = datetime.now().isoformat()
             save_state(state)
+        else:
+            log("ERROR: Failed to send email alert")
     else:
+        log(f"No alert needed (drop {data['drop_percent']}% < threshold {DROP_THRESHOLD * 100}%)")
         print(
             f"\nNo alert needed (drop {data['drop_percent']}% < threshold {DROP_THRESHOLD * 100}%)"
         )
