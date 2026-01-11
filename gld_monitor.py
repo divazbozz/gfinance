@@ -10,6 +10,7 @@ from email.mime.multipart import MIMEMultipart
 from datetime import datetime, timedelta
 import json
 import os
+import requests
 from dotenv import load_dotenv
 
 load_dotenv()  # Load .env file for local development
@@ -30,14 +31,45 @@ EMAIL_CONFIG = {
 
 # State file to track alerts
 STATE_FILE = "gld_monitor_state.json"
-LOG_FILE = "gld_monitor.log"
+
+# Gist configuration for persistent logging
+GIST_ID = os.getenv("GIST_ID", "")
+GIST_TOKEN = os.getenv("GIST_TOKEN", "")
+GIST_FILENAME = "gld_monitor.log"
 
 
 def log(message: str):
-    """Append timestamped message to log file."""
+    """Append timestamped message to GitHub Gist."""
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    with open(LOG_FILE, "a") as f:
-        f.write(f"[{timestamp}] {message}\n")
+    log_entry = f"[{timestamp}] {message}\n"
+
+    # Always print to stdout for GitHub Actions logs
+    print(f"LOG: {log_entry.strip()}")
+
+    if not GIST_ID or not GIST_TOKEN:
+        print("Warning: GIST_ID or GIST_TOKEN not set, skipping gist logging")
+        return
+
+    headers = {"Authorization": f"token {GIST_TOKEN}"}
+
+    try:
+        # Get current gist content
+        resp = requests.get(f"https://api.github.com/gists/{GIST_ID}", headers=headers)
+        resp.raise_for_status()
+        current_content = resp.json()["files"][GIST_FILENAME]["content"]
+
+        # Append new entry
+        new_content = current_content + log_entry
+
+        # Update gist
+        update_resp = requests.patch(
+            f"https://api.github.com/gists/{GIST_ID}",
+            headers=headers,
+            json={"files": {GIST_FILENAME: {"content": new_content}}}
+        )
+        update_resp.raise_for_status()
+    except Exception as e:
+        print(f"Warning: Failed to log to gist: {e}")
 
 
 def get_gld_data(ticker: str, days: int) -> dict:
