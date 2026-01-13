@@ -35,13 +35,11 @@ EMAIL_CONFIG = {
     "recipient_email": os.getenv("RECIPIENT_EMAIL", ""),
 }
 
-# State file to track alerts
-STATE_FILE = "gld_monitor_state.json"
-
-# Gist configuration for persistent logging
+# Gist configuration for persistent logging and state
 GIST_ID = os.getenv("GIST_ID", "")
 GIST_TOKEN = os.getenv("GIST_TOKEN", "")
-GIST_FILENAME = "gld_monitor.log"
+GIST_LOG_FILE = "gld_monitor.log"
+GIST_STATE_FILE = "gld_monitor_state.json"
 
 
 def log(message: str):
@@ -62,7 +60,7 @@ def log(message: str):
         # Get current gist content
         resp = requests.get(f"https://api.github.com/gists/{GIST_ID}", headers=headers)
         resp.raise_for_status()
-        current_content = resp.json()["files"][GIST_FILENAME]["content"]
+        current_content = resp.json()["files"][GIST_LOG_FILE]["content"]
 
         # Append new entry
         new_content = current_content + log_entry
@@ -71,7 +69,7 @@ def log(message: str):
         update_resp = requests.patch(
             f"https://api.github.com/gists/{GIST_ID}",
             headers=headers,
-            json={"files": {GIST_FILENAME: {"content": new_content}}}
+            json={"files": {GIST_LOG_FILE: {"content": new_content}}}
         )
         update_resp.raise_for_status()
     except Exception as e:
@@ -147,17 +145,42 @@ Time: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
 
 
 def load_state() -> dict:
-    """Load previous state from file."""
-    if os.path.exists(STATE_FILE):
-        with open(STATE_FILE, "r") as f:
-            return json.load(f)
-    return {}
+    """Load previous state from GitHub Gist."""
+    if not GIST_ID or not GIST_TOKEN:
+        print("Warning: GIST_ID or GIST_TOKEN not set, state won't persist")
+        return {}
+
+    headers = {"Authorization": f"token {GIST_TOKEN}"}
+
+    try:
+        resp = requests.get(f"https://api.github.com/gists/{GIST_ID}", headers=headers)
+        resp.raise_for_status()
+        files = resp.json()["files"]
+
+        if GIST_STATE_FILE in files:
+            return json.loads(files[GIST_STATE_FILE]["content"])
+        return {}
+    except Exception as e:
+        print(f"Warning: Failed to load state from gist: {e}")
+        return {}
 
 
 def save_state(state: dict):
-    """Save state to file."""
-    with open(STATE_FILE, "w") as f:
-        json.dump(state, f)
+    """Save state to GitHub Gist."""
+    if not GIST_ID or not GIST_TOKEN:
+        return
+
+    headers = {"Authorization": f"token {GIST_TOKEN}"}
+
+    try:
+        update_resp = requests.patch(
+            f"https://api.github.com/gists/{GIST_ID}",
+            headers=headers,
+            json={"files": {GIST_STATE_FILE: {"content": json.dumps(state, indent=2)}}}
+        )
+        update_resp.raise_for_status()
+    except Exception as e:
+        print(f"Warning: Failed to save state to gist: {e}")
 
 
 def should_send_alert(data: dict, state: dict) -> bool:

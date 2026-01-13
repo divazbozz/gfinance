@@ -21,8 +21,8 @@ Asset price monitor that alerts via email when prices drop 2%+ from their 30-day
 
 - **Data source**: Yahoo Finance via `yfinance`
 - **Alerting**: Email via SMTP (Gmail)
-- **Logging**: Persistent logs via GitHub Gist API (not local file, since Actions runners are ephemeral)
-- **State**: `gld_monitor_state.json` tracks last alert per ticker to avoid spam
+- **Logging**: Persistent logs via GitHub Gist API (`gld_monitor.log` in gist)
+- **State**: Persistent via GitHub Gist API (`gld_monitor_state.json` in same gist) - tracks last alert per ticker to avoid spam
 
 ## Required Secrets (GitHub Actions)
 
