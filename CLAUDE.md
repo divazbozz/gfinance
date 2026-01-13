@@ -2,8 +2,14 @@
 
 ## Overview
 
-GLD (Gold ETF) price monitor that alerts via email when price drops 2%+ from its 30-day high. Runs on GitHub Actions.
-We will monitor other key assets as we keep expanding
+Asset price monitor that alerts via email when prices drop 2%+ from their 30-day highs. Runs on GitHub Actions.
+
+## Tracked Assets
+
+- **GLD** - Gold ETF
+- **SLV** - Silver ETF
+- **COPX** - Global X Copper Miners ETF
+- **ICOP** - iShares Copper and Metals Mining ETF
 
 ## Key Files
 
@@ -16,7 +22,7 @@ We will monitor other key assets as we keep expanding
 - **Data source**: Yahoo Finance via `yfinance`
 - **Alerting**: Email via SMTP (Gmail)
 - **Logging**: Persistent logs via GitHub Gist API (not local file, since Actions runners are ephemeral)
-- **State**: `gld_monitor_state.json` tracks last alert to avoid spam
+- **State**: `gld_monitor_state.json` tracks last alert per ticker to avoid spam
 
 ## Required Secrets (GitHub Actions)
 

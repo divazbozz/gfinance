@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
-GLD Price Monitor - Alerts when price falls 2% from recent high
+Asset Price Monitor - Alerts when prices fall 2% from recent highs
+Tracks: Gold (GLD), Silver (SLV), Copper (COPX, ICOP)
 """
 
 import yfinance as yf
@@ -16,7 +17,12 @@ from dotenv import load_dotenv
 load_dotenv()  # Load .env file for local development
 
 # Configuration
-TICKER = "GLD"
+TICKERS = {
+    "GLD": "Gold",
+    "SLV": "Silver",
+    "COPX": "Copper (Global X)",
+    "ICOP": "Copper (iShares)",
+}
 DROP_THRESHOLD = 0.02  # 2% drop threshold
 LOOKBACK_DAYS = 30  # Days to look back for recent high
 
@@ -72,8 +78,8 @@ def log(message: str):
         print(f"Warning: Failed to log to gist: {e}")
 
 
-def get_gld_data(ticker: str, days: int) -> dict:
-    """Fetch GLD price data from Yahoo Finance."""
+def get_ticker_data(ticker: str, name: str, days: int) -> dict:
+    """Fetch price data from Yahoo Finance."""
     stock = yf.Ticker(ticker)
 
     # Get historical data
@@ -90,6 +96,7 @@ def get_gld_data(ticker: str, days: int) -> dict:
 
     return {
         "ticker": ticker,
+        "name": name,
         "current_price": round(current_price, 2),
         "recent_high": round(recent_high, 2),
         "high_date": high_date.strftime("%Y-%m-%d"),
@@ -97,19 +104,24 @@ def get_gld_data(ticker: str, days: int) -> dict:
     }
 
 
-def send_email_alert(data: dict, config: dict) -> bool:
-    """Send email alert about price drop."""
-    subject = f"GLD Alert: Price dropped {data['drop_percent']}% from recent high"
+def send_email_alert(alerts: list, config: dict) -> bool:
+    """Send email alert about price drops."""
+    if len(alerts) == 1:
+        subject = f"{alerts[0]['name']} Alert: {alerts[0]['ticker']} dropped {alerts[0]['drop_percent']}%"
+    else:
+        tickers = ", ".join(a["ticker"] for a in alerts)
+        subject = f"Price Alert: {tickers} dropped from recent highs"
 
-    body = f"""
-GLD Price Alert
-
-Current Price: ${data['current_price']}
-Recent High: ${data['recent_high']} (on {data['high_date']})
-Drop from High: {data['drop_percent']}%
-
-This alert was triggered because GLD has fallen more than 2% from its {LOOKBACK_DAYS}-day high.
-
+    body = "Price Alert\n\n"
+    for data in alerts:
+        body += f"""
+{data['name']} ({data['ticker']})
+  Current Price: ${data['current_price']}
+  Recent High: ${data['recent_high']} (on {data['high_date']})
+  Drop from High: {data['drop_percent']}%
+"""
+    body += f"""
+Alert threshold: {DROP_THRESHOLD * 100}% drop from {LOOKBACK_DAYS}-day high
 Time: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
 """
 
@@ -139,7 +151,7 @@ def load_state() -> dict:
     if os.path.exists(STATE_FILE):
         with open(STATE_FILE, "r") as f:
             return json.load(f)
-    return {"last_alert_high": None, "last_alert_time": None}
+    return {}
 
 
 def save_state(state: dict):
@@ -150,54 +162,63 @@ def save_state(state: dict):
 
 def should_send_alert(data: dict, state: dict) -> bool:
     """Determine if we should send an alert (avoid spam)."""
+    ticker = data["ticker"]
+
     # Only alert if drop exceeds threshold
     if data["drop_percent"] < DROP_THRESHOLD * 100:
         return False
 
-    # Avoid re-alerting for the same high
-    if state.get("last_alert_high") == data["recent_high"]:
-        print("Already alerted for this recent high, skipping...")
+    # Avoid re-alerting for the same high (per ticker)
+    ticker_state = state.get(ticker, {})
+    if ticker_state.get("last_alert_high") == data["recent_high"]:
+        print(f"Already alerted for {ticker} at this recent high, skipping...")
         return False
 
     return True
 
 
 def main():
-    log("=== GLD Monitor Run Started ===")
-    print(f"Fetching {TICKER} data...")
-
-    try:
-        data = get_gld_data(TICKER, LOOKBACK_DAYS)
-    except Exception as e:
-        log(f"ERROR: Failed to fetch data - {e}")
-        print(f"Error fetching data: {e}")
-        return
-
-    summary = f"Price=${data['current_price']} | High=${data['recent_high']} ({data['high_date']}) | Drop={data['drop_percent']}%"
-    log(summary)
-
-    print(f"\n{TICKER} Price Summary:")
-    print(f"  Current Price: ${data['current_price']}")
-    print(f"  {LOOKBACK_DAYS}-Day High: ${data['recent_high']} ({data['high_date']})")
-    print(f"  Drop from High: {data['drop_percent']}%")
-    print(f"  Alert Threshold: {DROP_THRESHOLD * 100}%")
-
+    log("=== Asset Monitor Run Started ===")
     state = load_state()
+    alerts_to_send = []
 
-    if should_send_alert(data, state):
-        print(f"\nPrice has dropped {data['drop_percent']}% - sending alert!")
-        if send_email_alert(data, EMAIL_CONFIG):
-            log(f"ALERT SENT: Drop {data['drop_percent']}% exceeded threshold")
-            state["last_alert_high"] = data["recent_high"]
-            state["last_alert_time"] = datetime.now().isoformat()
+    for ticker, name in TICKERS.items():
+        print(f"\nFetching {ticker} ({name}) data...")
+
+        try:
+            data = get_ticker_data(ticker, name, LOOKBACK_DAYS)
+        except Exception as e:
+            log(f"ERROR: Failed to fetch {ticker} - {e}")
+            print(f"Error fetching {ticker}: {e}")
+            continue
+
+        summary = f"{ticker}: ${data['current_price']} | High=${data['recent_high']} ({data['high_date']}) | Drop={data['drop_percent']}%"
+        log(summary)
+
+        print(f"  Current Price: ${data['current_price']}")
+        print(f"  {LOOKBACK_DAYS}-Day High: ${data['recent_high']} ({data['high_date']})")
+        print(f"  Drop from High: {data['drop_percent']}%")
+
+        if should_send_alert(data, state):
+            alerts_to_send.append(data)
+
+    print(f"\nAlert Threshold: {DROP_THRESHOLD * 100}%")
+
+    if alerts_to_send:
+        tickers_alerting = ", ".join(a["ticker"] for a in alerts_to_send)
+        print(f"\nSending alert for: {tickers_alerting}")
+        if send_email_alert(alerts_to_send, EMAIL_CONFIG):
+            for data in alerts_to_send:
+                log(f"ALERT SENT: {data['ticker']} dropped {data['drop_percent']}%")
+                state[data["ticker"]] = {
+                    "last_alert_high": data["recent_high"],
+                    "last_alert_time": datetime.now().isoformat(),
+                }
             save_state(state)
         else:
             log("ERROR: Failed to send email alert")
     else:
-        log(f"No alert needed (drop {data['drop_percent']}% < threshold {DROP_THRESHOLD * 100}%)")
-        print(
-            f"\nNo alert needed (drop {data['drop_percent']}% < threshold {DROP_THRESHOLD * 100}%)"
-        )
+        print("\nNo alerts needed - all assets within threshold")
 
 
 if __name__ == "__main__":
