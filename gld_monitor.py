@@ -22,6 +22,7 @@ TICKERS = {
     "SLV": "Silver",
     "COPX": "Copper (Global X)",
     "ICOP": "Copper (iShares)",
+    "BTC-USD": "Bitcoin USD",
 }
 DROP_THRESHOLD = 0.02  # 2% drop threshold
 LOOKBACK_DAYS = 30  # Days to look back for recent high
@@ -69,7 +70,7 @@ def log(message: str):
         update_resp = requests.patch(
             f"https://api.github.com/gists/{GIST_ID}",
             headers=headers,
-            json={"files": {GIST_LOG_FILE: {"content": new_content}}}
+            json={"files": {GIST_LOG_FILE: {"content": new_content}}},
         )
         update_resp.raise_for_status()
     except Exception as e:
@@ -176,7 +177,7 @@ def save_state(state: dict):
         update_resp = requests.patch(
             f"https://api.github.com/gists/{GIST_ID}",
             headers=headers,
-            json={"files": {GIST_STATE_FILE: {"content": json.dumps(state, indent=2)}}}
+            json={"files": {GIST_STATE_FILE: {"content": json.dumps(state, indent=2)}}},
         )
         update_resp.raise_for_status()
     except Exception as e:
@@ -219,7 +220,9 @@ def main():
         log(summary)
 
         print(f"  Current Price: ${data['current_price']}")
-        print(f"  {LOOKBACK_DAYS}-Day High: ${data['recent_high']} ({data['high_date']})")
+        print(
+            f"  {LOOKBACK_DAYS}-Day High: ${data['recent_high']} ({data['high_date']})"
+        )
         print(f"  Drop from High: {data['drop_percent']}%")
 
         if should_send_alert(data, state):
